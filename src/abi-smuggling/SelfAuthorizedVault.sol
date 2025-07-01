@@ -30,7 +30,11 @@ contract SelfAuthorizedVault is AuthorizedExecutor {
      * @param recipient address of the tokens' recipient
      * @param amount amount of tokens to be transferred
      */
-    function withdraw(address token, address recipient, uint256 amount) external onlyThis {
+    function withdraw(
+        address token,
+        address recipient,
+        uint256 amount
+    ) external onlyThis {
         if (amount > WITHDRAWAL_LIMIT) {
             revert InvalidWithdrawalAmount();
         }
@@ -45,14 +49,21 @@ contract SelfAuthorizedVault is AuthorizedExecutor {
     }
 
     function sweepFunds(address receiver, IERC20 token) external onlyThis {
-        SafeTransferLib.safeTransfer(address(token), receiver, token.balanceOf(address(this)));
+        SafeTransferLib.safeTransfer(
+            address(token),
+            receiver,
+            token.balanceOf(address(this))
+        );
     }
 
     function getLastWithdrawalTimestamp() external view returns (uint256) {
         return _lastWithdrawalTimestamp;
     }
 
-    function _beforeFunctionCall(address target, bytes memory) internal view override {
+    function _beforeFunctionCall(
+        address target,
+        bytes memory
+    ) internal view override {
         if (target != address(this)) {
             revert TargetNotAllowed();
         }

