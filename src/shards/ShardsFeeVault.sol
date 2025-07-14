@@ -19,7 +19,10 @@ contract ShardsFeeVault is Initializable, Ownable {
         _disableInitializers();
     }
 
-    function initialize(address _owner, DamnValuableToken _token) external initializer {
+    function initialize(
+        address _owner,
+        DamnValuableToken _token
+    ) external initializer {
         _initializeOwner(_owner);
         token = _token;
     }

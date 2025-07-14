@@ -32,7 +32,12 @@ contract CurvyPuppetLending is ReentrancyGuard {
     error HealthyPosition(uint256 borrowValue, uint256 collateralValue);
     error UnhealthyPosition();
 
-    constructor(address _collateralAsset, IStableSwap _curvePool, IPermit2 _permit2, CurvyPuppetOracle _oracle) {
+    constructor(
+        address _collateralAsset,
+        IStableSwap _curvePool,
+        IPermit2 _permit2,
+        CurvyPuppetOracle _oracle
+    ) {
         borrowAsset = _curvePool.lp_token();
         collateralAsset = _collateralAsset;
         curvePool = _curvePool;
@@ -48,11 +53,17 @@ contract CurvyPuppetLending is ReentrancyGuard {
     function withdraw(uint256 amount) external nonReentrant {
         if (amount == 0) revert InvalidAmount();
 
-        uint256 remainingCollateral = positions[msg.sender].collateralAmount - amount;
-        uint256 remainingCollateralValue = getCollateralValue(remainingCollateral);
-        uint256 borrowValue = getBorrowValue(positions[msg.sender].borrowAmount);
+        uint256 remainingCollateral = positions[msg.sender].collateralAmount -
+            amount;
+        uint256 remainingCollateralValue = getCollateralValue(
+            remainingCollateral
+        );
+        uint256 borrowValue = getBorrowValue(
+            positions[msg.sender].borrowAmount
+        );
 
-        if (borrowValue * 175 > remainingCollateralValue * 100) revert UnhealthyPosition();
+        if (borrowValue * 175 > remainingCollateralValue * 100)
+            revert UnhealthyPosition();
 
         positions[msg.sender].collateralAmount = remainingCollateral;
         IERC20(collateralAsset).transfer(msg.sender, amount);
@@ -60,10 +71,14 @@ contract CurvyPuppetLending is ReentrancyGuard {
 
     function borrow(uint256 amount) external {
         // Get current collateral and borrow values
-        uint256 collateralValue = getCollateralValue(positions[msg.sender].collateralAmount);
-        uint256 currentBorrowValue = getBorrowValue(positions[msg.sender].borrowAmount);
+        uint256 collateralValue = getCollateralValue(
+            positions[msg.sender].collateralAmount
+        );
+        uint256 currentBorrowValue = getBorrowValue(
+            positions[msg.sender].borrowAmount
+        );
 
-        uint256 maxBorrowValue = collateralValue * 100 / 175;
+        uint256 maxBorrowValue = (collateralValue * 100) / 175;
         uint256 availableBorrowValue = maxBorrowValue - currentBorrowValue;
 
         if (amount == type(uint256).max) {
@@ -75,7 +90,8 @@ contract CurvyPuppetLending is ReentrancyGuard {
 
         // Now do solvency check
         uint256 borrowAmountValue = getBorrowValue(amount);
-        if (currentBorrowValue + borrowAmountValue > maxBorrowValue) revert NotEnoughCollateral();
+        if (currentBorrowValue + borrowAmountValue > maxBorrowValue)
+            revert NotEnoughCollateral();
 
         // Update caller's position and transfer borrowed assets
         positions[msg.sender].borrowAmount += amount;
@@ -100,7 +116,8 @@ contract CurvyPuppetLending is ReentrancyGuard {
 
         uint256 collateralValue = getCollateralValue(collateralAmount) * 100;
         uint256 borrowValue = getBorrowValue(borrowAmount) * 175;
-        if (collateralValue >= borrowValue) revert HealthyPosition(borrowValue, collateralValue);
+        if (collateralValue >= borrowValue)
+            revert HealthyPosition(borrowValue, collateralValue);
 
         delete positions[target];
 
@@ -127,10 +144,18 @@ contract CurvyPuppetLending is ReentrancyGuard {
     }
 
     function _pullAssets(address asset, uint256 amount) private {
-        permit2.transferFrom({from: msg.sender, to: address(this), amount: SafeCast.toUint160(amount), token: asset});
+        permit2.transferFrom({
+            from: msg.sender,
+            to: address(this),
+            amount: SafeCast.toUint160(amount),
+            token: asset
+        });
     }
 
     function _getLPTokenPrice() private view returns (uint256) {
-        return oracle.getPrice(curvePool.coins(0)).value.mulWadDown(curvePool.get_virtual_price());
+        return
+            oracle.getPrice(curvePool.coins(0)).value.mulWadDown(
+                curvePool.get_virtual_price()
+            );
     }
 }
