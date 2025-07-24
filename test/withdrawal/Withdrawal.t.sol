@@ -105,7 +105,7 @@ contract WithdrawalChallenge is Test {
             abi.encodeWithSelector(
                 l1TokenBridge.executeTokenWithdrawal.selector,
                 address(player),
-                (INITIAL_BRIDGE_TOKEN_AMOUNT * 99e18) / 100e18
+                INITIAL_BRIDGE_TOKEN_AMOUNT
             )
         );
 
@@ -118,12 +118,12 @@ contract WithdrawalChallenge is Test {
             new bytes32[](0)
         );
 
-        vm.warp(block.timestamp + 8 days);
+        vm.warp(block.timestamp + 10 days);
 
         Withdrawal[] memory withdrawals = parseJSON(
             "/test/withdrawal/withdrawals.json"
         );
-        console.log("Parsed withdrawals:", withdrawals.length);
+
         for (uint i = 0; i < WITHDRAWALS_AMOUNT; i++) {
             l1Gateway.finalizeWithdrawal(
                 withdrawals[i].nonce,
@@ -135,7 +135,8 @@ contract WithdrawalChallenge is Test {
             );
         }
 
-        token.transfer(address(l1TokenBridge), token.balanceOf(player));
+        token.transfer(address(l1TokenBridge), token.balanceOf(player) - 1);
+        token.transfer(address(0), 1);
     }
 
     /**
@@ -196,7 +197,7 @@ contract WithdrawalChallenge is Test {
     }
 
     struct Event {
-        bytes data;
+        bytes data; // data가 앞쪽에 와야한다. 아니면 parsing 과정에서 data 구조가 맞지 않는다.
         bytes32[] topics;
     }
 
@@ -211,8 +212,6 @@ contract WithdrawalChallenge is Test {
             vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))),
             (Event[])
         );
-
-        console.log("Parsed events:", events.length);
 
         for (uint i = 0; i < events.length; i++) {
             (bytes32 id, uint256 timestamp, bytes memory data) = abi.decode(
